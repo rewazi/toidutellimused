@@ -1,0 +1,15 @@
+{
+  "name": "toidutellimused",
+  "version": "1.0.0",
+  "description": "Toidutellimuste rakendus — agiilse arenduse labor",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "test": "node src/test.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  }
+}
