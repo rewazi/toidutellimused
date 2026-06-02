@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="et">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Toidutellimused</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">Toidutellimused</div>
+        <div class="nav-right">
+            <div id="env-badge" class="env-badge"></div>
+            <div id="auth-section">
+                <button class="btn btn-outline" onclick="showLogin()">Logi sisse</button>
+                <button class="btn btn-primary" onclick="showSignup()">Registreeru</button>
+            </div>
+            <div id="user-section" style="display:none;">
+                <span id="username-display" class="username"></span>
+                <button class="btn btn-outline" onclick="showOrders()">Minu tellimused</button>
+                <button class="btn btn-outline" onclick="logout()">Logi välja</button>
+            </div>
+        </div>
+    </nav>
+
+    <div id="modal" class="modal-overlay" style="display:none;">
+        <div class="modal">
+            <button class="modal-close" onclick="closeModal()">x</button>
+            <div id="modal-content"></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="category-bar" id="category-bar"></div>
+        <div id="menu-grid" class="menu-grid"></div>
+
+        <div id="cart" class="cart" style="display:none;">
+            <h3>Ostukorv</h3>
+            <div id="cart-items"></div>
+            <div class="cart-total">
+                Kokku: <strong id="cart-total">€0.00</strong>
+            </div>
+            <button class="btn btn-primary w-full" onclick="placeOrder()">Telli</button>
+            <div id="order-msg" style="display:none;"></div>
+        </div>
+    </div>
+
+    <script>
+        let token = localStorage.getItem('token');
+        let currentUser = null;
+        let cart = [];
+        let currentCategory = null;
+
+        async function init() {
+            await loadCategories();
+            await loadMenu();
+            await loadEnv();
+            if (token) await loadCurrentUser();
+        }
+
+        async function loadEnv() {
+            try {
+                const res = await fetch('/health');
+                const data = await res.json();
+                const badge = document.getElementById('env-badge');
+                badge.textContent = data.env.toUpperCase();
+                badge.className = `env-badge env-badge--${data.env}`;
+            } catch {}
+        }
+
+        async function loadCurrentUser() {
+            try {
+                const res = await fetch('/api/users/me', { headers: { 'Authorization': token } });
+                if (res.ok) {
+                    currentUser = await res.json();
+                    document.getElementById('auth-section').style.display = 'none';
+                    document.getElementById('user-section').style.display = 'flex';
+                    document.getElementById('username-display').textContent = currentUser.name;
+                } else {
+                    token = null;
+                    localStorage.removeItem('token');
+                }
+            } catch {}
+        }
+
+        async function loadCategories() {
+            const res = await fetch('/api/menu/categories');
+            const data = await res.json();
+            const bar = document.getElementById('category-bar');
+            bar.innerHTML = `<button class="cat-btn active" onclick="filterCategory(null, this)">Kõik</button>`;
+            data.categories.forEach(cat => {
+                bar.innerHTML += `<button class="cat-btn" onclick="filterCategory('${cat}', this)">${cat}</button>`;
+            });
+        }
+
+        async function loadMenu(category = null) {
+            const url = category ? `/api/menu/category/${category}` : '/api/menu';
+            const res = await fetch(url);
+            const data = await res.json();
+            const items = data.menu || data.items || [];
+            renderMenu(items);
+        }
+
+        function filterCategory(cat, btn) {
+            currentCategory = cat;
+            document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            loadMenu(cat);
+        }
+
+        function renderMenu(items) {
+            const grid = document.getElementById('menu-grid');
+            if (!items || items.length === 0) {
+                grid.innerHTML = '<p class="empty">Tooteid ei leitud.</p>';
+                return;
+            }
+            grid.innerHTML = items.map(item => `
+                <div class="menu-card">
+                    <div class="menu-category">${item.category}</div>
+                    <h3>${item.name}</h3>
+                    <p class="menu-desc">${item.description}</p>
+                    <div class="menu-footer">
+                        <div class="menu-price">€${item.price.toFixed(2)}</div>
+                        <button class="btn btn-primary btn-sm" onclick="addToCart(${item.id}, '${item.name}', ${item.price})">Lisa</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function addToCart(id, name, price) {
+            if (!token) {
+                showLogin();
+                return;
+            }
+            const existing = cart.find(i => i.menuId === id);
+            if (existing) {
+                existing.quantity++;
+            } else {
+                cart.push({ menuId: id, name, price, quantity: 1 });
+            }
+            renderCart();
+        }
+
+        function renderCart() {
+            const cartEl = document.getElementById('cart');
+            const itemsEl = document.getElementById('cart-items');
+            const totalEl = document.getElementById('cart-total');
+
+            if (cart.length === 0) {
+                cartEl.style.display = 'none';
+                return;
+            }
+
+            cartEl.style.display = 'block';
+            itemsEl.innerHTML = cart.map(item => `
+                <div class="cart-item">
+                    <span>${item.name} x${item.quantity}</span>
+                    <span>€${(item.price * item.quantity).toFixed(2)}</span>
+                    <button onclick="removeFromCart(${item.menuId})">x</button>
+                </div>
+            `).join('');
+
+            const total = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
+            totalEl.textContent = `€${total.toFixed(2)}`;
+        }
+
+        function removeFromCart(menuId) {
+            cart = cart.filter(i => i.menuId !== menuId);
+            renderCart();
+        }
+
+        async function placeOrder() {
+            const msgEl = document.getElementById('order-msg');
+            try {
+                const res = await fetch('/api/orders', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': token },
+                    body: JSON.stringify({ items: cart.map(i => ({ menuId: i.menuId, quantity: i.quantity })) })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    msgEl.className = 'success-msg';
+                    msgEl.textContent = `Tellimus #${data.order.id} vastu võetud!`;
+                    cart = [];
+                    renderCart();
+                } else {
+                    msgEl.className = 'error-msg';
+                    msgEl.textContent = data.error;
+                }
+                msgEl.style.display = 'block';
+            } catch {}
+        }
+
+        function showLogin() {
+            document.getElementById('modal-content').innerHTML = `
+                <h2>Logi sisse</h2>
+                <div class="form-group"><label>Kasutajanimi</label><input type="text" id="login-u" placeholder="kasutajanimi"></div>
+                <div class="form-group"><label>Parool</label><input type="password" id="login-p" placeholder="parool"></div>
+                <div id="login-err" class="error-msg" style="display:none;"></div>
+                <button class="btn btn-primary w-full" onclick="login()">Logi sisse</button>
+                <p class="modal-switch">Pole kontot? <a href="#" onclick="showSignup()">Registreeru</a></p>
+                <p class="hint">Testikontod: mari / 1234 või jaan / 1234</p>
+            `;
+            document.getElementById('modal').style.display = 'flex';
+        }
+
+        function showSignup() {
+            document.getElementById('modal-content').innerHTML = `
+                <h2>Registreeru</h2>
+                <div class="form-group"><label>Nimi</label><input type="text" id="signup-n" placeholder="Sinu nimi"></div>
+                <div class="form-group"><label>Kasutajanimi</label><input type="text" id="signup-u" placeholder="kasutajanimi"></div>
+                <div class="form-group"><label>Parool</label><input type="password" id="signup-p" placeholder="parool"></div>
+                <div id="signup-err" class="error-msg" style="display:none;"></div>
+                <button class="btn btn-primary w-full" onclick="signup()">Registreeru</button>
+                <p class="modal-switch">On juba konto? <a href="#" onclick="showLogin()">Logi sisse</a></p>
+            `;
+            document.getElementById('modal').style.display = 'flex';
+        }
+
+        async function login() {
+            const username = document.getElementById('login-u').value;
+            const password = document.getElementById('login-p').value;
+            const err = document.getElementById('login-err');
+            const res = await fetch('/api/users/login', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                token = data.token;
+                localStorage.setItem('token', token);
+                currentUser = data.user;
+                document.getElementById('auth-section').style.display = 'none';
+                document.getElementById('user-section').style.display = 'flex';
+                document.getElementById('username-display').textContent = currentUser.name;
+                closeModal();
+            } else {
+                err.textContent = data.error;
+                err.style.display = 'block';
+            }
+        }
+
+        async function signup() {
+            const name = document.getElementById('signup-n').value;
+            const username = document.getElementById('signup-u').value;
+            const password = document.getElementById('signup-p').value;
+            const err = document.getElementById('signup-err');
+            const res = await fetch('/api/users/signup', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, username, password })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                token = data.token;
+                localStorage.setItem('token', token);
+                currentUser = data.user;
+                document.getElementById('auth-section').style.display = 'none';
+                document.getElementById('user-section').style.display = 'flex';
+                document.getElementById('username-display').textContent = currentUser.name;
+                closeModal();
+            } else {
+                err.textContent = data.error;
+                err.style.display = 'block';
+            }
+        }
+
+        async function logout() {
+            await fetch('/api/users/logout', { method: 'POST', headers: { 'Authorization': token } });
+            token = null; currentUser = null;
+            localStorage.removeItem('token');
+            document.getElementById('auth-section').style.display = 'flex';
+            document.getElementById('user-section').style.display = 'none';
+        }
+
+        async function showOrders() {
+            const res = await fetch('/api/orders/user/me', { headers: { 'Authorization': token } });
+            const data = await res.json();
+            const ordersHtml = data.orders.length === 0
+                ? '<p class="empty">Tellimusi pole veel.</p>'
+                : data.orders.map(o => `
+                    <div class="order-card">
+                        <div class="order-header">
+                            <strong>Tellimus #${o.id}</strong>
+                            <span class="status-badge status-${o.status.replace(' ', '-')}">${o.status}</span>
+                        </div>
+                        <div class="order-items">${o.items.map(i => `${i.name} x${i.quantity}`).join(', ')}</div>
+                        <div class="order-total">Kokku: €${o.total.toFixed(2)}</div>
+                    </div>
+                `).join('');
+
+            document.getElementById('modal-content').innerHTML = `<h2>Minu tellimused</h2>${ordersHtml}`;
+            document.getElementById('modal').style.display = 'flex';
+        }
+
+        function closeModal() { document.getElementById('modal').style.display = 'none'; }
+        document.getElementById('modal').addEventListener('click', e => { if (e.target === document.getElementById('modal')) closeModal(); });
+
+        init();
+    </script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+services:
+  # DEV keskkond — rohkem logisid, automaatne restart
+  app-dev:
+    profiles: ["dev"]
+    build: .
+    ports:
+      - "3000:3000"
+    container_name: toidutellimused-dev
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+    volumes:
+      - ./src:/app/src
+    restart: unless-stopped
+
+  # PROD keskkond — optimeeritud, minimaalsed logid
+  app-prod:
+    profiles: ["prod"]
+    build: .
+    ports:
+      - "3001:3000"
+    container_name: toidutellimused-prod
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    restart: always
