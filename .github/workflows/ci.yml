@@ -23,11 +23,14 @@ jobs:
       - name: Paigalda sõltuvused
         run: npm install
 
-      - name: Käivitame rakenduse
+      - name: Kontrolli ühtaksi vigu
+        run: node --check src/server.js src/routes/users.js src/routes/menu.js src/routes/order.js
+
+      - name: Käivita rakendus
         run: node src/server.js &
 
       - name: Oota kuni server käivitub
         run: sleep 3
 
-      - name: Käivitame testid
+      - name: Käivita testid
         run: node src/test.js
