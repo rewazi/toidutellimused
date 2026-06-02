@@ -1,12 +1,28 @@
-name: CI Pipeline
+name: CI pipeline
 
 on:
   push:
     branches: [ master ]
+
   pull_request:
     branches: [ master ]
 
 jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    needs: [test, build, lint]
+    if: github.ref == 'refs/head/master'
+    steps:
+      - name: Lae kood alla
+        uses: actions/checkout@v4
+
+      - name: Teata edukast deployst
+        run: | 
+          echo "Kõik testid läbisid!"
+          echo "Rakendus on valmis"
+          echo "Keskkond: production"
+          echo "Commit: ${{ github.sha }}"
   build:
     name: Docker build kontroll
     runs-on: ubuntu-latest
@@ -19,13 +35,28 @@ jobs:
 
       - name: Ehita prod image
         run: docker compose --profile prod build
-
-      - name: Ehita test image
-        run: docker compose --profile test build
-
-  test:
+  lint:      
     name: Koodi kontroll
     runs-on: ubuntu-latest
+    steps: 
+      - name: Lae kood alla
+        uses: actions/checkout@v4
+      
+      - name: Paigalda Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Paigalda sõltuvused
+        run: npm install
+
+      - name: Kontrolli üntaksi vigu
+        run: node --check src/server.js src/routes/users.js src/routes/menu.js src/routes/orders.js
+
+  test:
+    name: Automaattestid
+    runs-on: ubuntu-latest
+
     steps:
       - name: Lae kood alla
         uses: actions/checkout@v4
@@ -38,13 +69,10 @@ jobs:
       - name: Paigalda sõltuvused
         run: npm install
 
-      - name: Kontrolli ühtaksi vigu
-        run: node --check src/server.js src/routes/users.js src/routes/menu.js src/routes/order.js
-
-      - name: Käivita rakendus
+      - name: Käivita server
         run: node src/server.js &
 
-      - name: Oota kuni server käivitub
+      - name: Oota serveri käivitumist
         run: sleep 3
 
       - name: Käivita testid
